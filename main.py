@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 os.environ["GROQ_API_KEY"] = os.getenv("GROQ_API_KEY")
+os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
 
 st.set_page_config(
     page_title="Natural Language to SQL",
