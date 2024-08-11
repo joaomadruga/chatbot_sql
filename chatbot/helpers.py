@@ -1,11 +1,8 @@
-import os
 import sqlite3
-
 from langchain.chains.sql_database.prompt import SQL_PROMPTS
 from langchain_community.agent_toolkits import create_sql_agent
 from langchain_community.utilities import SQLDatabase
 from langchain_groq import ChatGroq
-from langchain_openai import ChatOpenAI
 
 
 def get_db_info(db_path):
@@ -37,8 +34,7 @@ def get_db_info(db_path):
 
 
 def natural_language_to_sql(question, llm):
-    llm = ChatGroq(model_name="llama3-70b-8192")
-    # llm = ChatOpenAI(model="gpt-4o")
+    print(f"Using {llm}")
     DB_NAME = "dbs/olimpic_medals.db"
     db = SQLDatabase.from_uri(f"sqlite:///{DB_NAME}")
     db_info = get_db_info(f"{DB_NAME}")
@@ -66,4 +62,4 @@ def natural_language_to_sql(question, llm):
                      """
         }
     )
-    return response
+    return response['output']
