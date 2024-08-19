@@ -30,5 +30,7 @@ Base = declarative_base()
 
 all_models = [User, Chat, Message, Base]
 
+if os.getenv("DROP_ALL_TABLES", False) == "True":
+    drop_all_tables(all_models, engine)
+
 create_all_tables(all_models, engine)
-# drop_all_tables(all_models, engine)

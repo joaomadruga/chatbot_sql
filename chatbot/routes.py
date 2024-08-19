@@ -1,11 +1,18 @@
+import os
+import sqlite3
+from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, status, UploadFile
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
 from sqlalchemy.orm import Session
 from auth.dependencies import get_current_user
-from chatbot.helpers import natural_language_to_sql
+from chatbot.helpers import (
+    merge_db_files,
+    natural_language_to_sql,
+    process_csv_to_db,
+)
 from chatbot.schemas import UserSchema
 from chatbot.models import User
 from chatbot.schemas import (
@@ -75,7 +82,7 @@ def generate_bot_answer(
 
     answer = Message(
             chat_id=message.chat_id,
-            message=natural_language_to_sql(question=message.message, llm=llm),
+            message=natural_language_to_sql(question=message.message, llm=llm, db_name=current_user.user_database_path),
             user_id=bot_user.id
     )
 
@@ -100,3 +107,70 @@ def list_chat_histories(
 @router.get("/me", response_model=UserSchema)
 def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+@router.post("/uploadfiles/")
+async def upload_files(current_user: User = Depends(get_current_user),
+                       files: List[UploadFile] = File(...),
+                       db: Session = Depends(get_db)):
+    upload_dir = os.getenv("UPLOAD_DIR", "./uploads")
+    max_upload_size = int(os.getenv("MAX_UPLOAD_SIZE", "50")) * 1024 * 1024
+
+    if not os.path.exists(upload_dir):
+        os.makedirs(upload_dir)
+
+    total_size = sum([file.size for file in files])
+    if total_size > max_upload_size:
+        raise HTTPException(status_code=413,
+                            detail="Total file size exceeds 50 MB limit.")
+
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    db_name = f"{current_user.username}_{timestamp}.db"
+    db_path = os.path.join(upload_dir, db_name)
+    conn = sqlite3.connect(db_path)
+
+    try:
+        processed_files = []
+
+        # Processar todos os arquivos CSV primeiro
+        for file in files:
+            file_path = os.path.join(upload_dir, file.filename)
+            with open(file_path, 'wb') as f:
+                f.write(await file.read())
+            processed_files.append(file_path)
+
+            if file.filename.endswith('.csv'):
+                process_csv_to_db(conn, file_path)
+
+        # Agora, combinar todos os arquivos .db no banco de dados
+        for file in files:
+            file_path = os.path.join(upload_dir, file.filename)
+
+            if file.filename.endswith('.db'):
+                merge_db_files(conn, file_path)
+
+        # Atualiza o atributo user_database_path do usuário no banco de dados
+        user = db.query(User).filter(
+            User.username == current_user.username).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Deleta o antigo banco de dados se existir
+        if user.user_database_path:
+            old_db_path = os.path.join(upload_dir, user.user_database_path)
+            if os.path.exists(old_db_path):
+                os.remove(old_db_path)
+                print(f"Deleted old database: {old_db_path}")
+
+        user.user_database_path = db_path
+        db.commit() 
+
+    finally:
+        conn.close()
+
+        for file_path in processed_files:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                print(f"Deleted processed file: {file_path}")
+
+    return {"status": "Files processed and combined into a single database"}

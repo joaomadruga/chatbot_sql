@@ -41,6 +41,8 @@ class ChatSchema(BaseModel):
 class UserBase(BaseModel):
     username: str
     image_base64: Optional[str] = None
+    preferred_model: str = "groq"
+    user_database_path: Optional[str] = None
 
 
 class UserCreate(UserBase):
@@ -50,6 +52,7 @@ class UserCreate(UserBase):
 class UserSchema(UserBase):
     id: int
     is_active: bool
+    user_database_path: Optional[str] = None
 
     class Config:
         orm_mode = True

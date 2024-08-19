@@ -13,6 +13,7 @@ class User(Base):
     hashed_password = Column(Text)
     is_active = Column(Boolean, default=True)
     image_base64 = Column(Text, nullable=True)
+    user_database_path = Column(String(255), nullable=True, default="dbs/olimpic_medals.db")
 
     chats = relationship("Chat", back_populates="user", cascade="all, delete-orphan")
     messages = relationship("Message", back_populates="user", cascade="all, delete-orphan")

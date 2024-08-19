@@ -30,6 +30,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
 
 
 def drop_all_tables(all_models, engine):
+    print("Dropping all tables")
     for model in all_models:
         model.metadata.drop_all(bind=engine)
 
