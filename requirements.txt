@@ -13,3 +13,4 @@ passlib==1.7.4
 psycopg2==2.9.9
 bcrypt==4.2.0
 pandas==2.2.2
+cryptography==41.0.5

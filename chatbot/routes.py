@@ -3,20 +3,22 @@ import sqlite3
 from datetime import datetime
 from typing import List
 
+from cryptography.fernet import Fernet
 from fastapi import APIRouter, Depends, File, HTTPException, status, UploadFile
+from langchain_community.callbacks import get_openai_callback
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
 from sqlalchemy.orm import Session
 from auth.dependencies import get_current_user
+from auth.utils import decrypt_api_key, get_secret_key_from_env
 from chatbot.helpers import (
-    merge_db_files,
+    get_llm_instance, merge_db_files,
     natural_language_to_sql,
     process_csv_to_db,
 )
-from chatbot.schemas import UserSchema
+from chatbot.schemas import GPTModelEnum, GroqModelEnum, UserSchema
 from chatbot.models import User
 from chatbot.schemas import (
-    LLMModelEnum,
     MessageCreate,
     ChatCreate,
     ChatSchema,
@@ -69,22 +71,41 @@ def generate_bot_answer(
     new_user_message = Message(
         chat_id=message.chat_id,
         message=message.message,
-        user_id=message.user_id
+        user_id=message.user_id,
+        cost=0
     )
 
     db.add(new_user_message)
     db.commit()
     db.refresh(new_user_message)
 
-    llm = ChatGroq(model_name="llama3-70b-8192")
-    if message.model_name == LLMModelEnum.chatgpt:
-        llm = ChatOpenAI(model="gpt-4o")
-
+    secret_key = get_secret_key_from_env()
+    fernet = Fernet(secret_key)
     answer = Message(
-            chat_id=message.chat_id,
-            message=natural_language_to_sql(question=message.message, llm=llm, db_name=current_user.user_database_path),
-            user_id=bot_user.id
+        chat_id=message.chat_id,
+        message="You should add an API key.",
+        user_id=bot_user.id,
+        cost=0
     )
+
+    if current_user.hashed_api_key:
+        api_key = decrypt_api_key(encrypted_key=current_user.hashed_api_key,
+                                  fernet=fernet)
+        os.environ.update({"GROQ_API_KEY": api_key, "OPENAI_API_KEY": api_key})
+        llm = get_llm_instance(model_name=message.model_name)
+
+        query, output, cost = natural_language_to_sql(
+            question=message.message,
+            llm=llm,
+            db_name=current_user.user_database_path
+        )
+        answer = Message(
+            chat_id=message.chat_id,
+            cost=cost,
+            db_query=query,
+            message=output,
+            user_id=bot_user.id
+        )
 
     db.add(answer)
     db.commit()
@@ -107,6 +128,17 @@ def list_chat_histories(
 @router.get("/me", response_model=UserSchema)
 def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+@router.get("/models")
+def list_models():
+    gpt_models = [v.value for k, v in GPTModelEnum.__members__.items()]
+    groq_models = [v.value for k, v in GroqModelEnum.__members__.items()]
+
+    return {
+        "gpt": gpt_models,
+        "groq": groq_models
+    }
 
 
 @router.post("/uploadfiles/")
@@ -163,7 +195,7 @@ async def upload_files(current_user: User = Depends(get_current_user),
                 print(f"Deleted old database: {old_db_path}")
 
         user.user_database_path = db_path
-        db.commit() 
+        db.commit()
 
     finally:
         conn.close()

@@ -1,4 +1,13 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Text, Boolean
+from sqlalchemy import (
+    Column,
+    Float,
+    Integer,
+    LargeBinary,
+    String,
+    ForeignKey,
+    Text,
+    Boolean,
+)
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
@@ -11,6 +20,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(255), unique=True, index=True)
     hashed_password = Column(Text)
+    hashed_api_key = Column(LargeBinary, nullable=True)
     is_active = Column(Boolean, default=True)
     image_base64 = Column(Text, nullable=True)
     user_database_path = Column(String(255), nullable=True, default="dbs/olimpic_medals.db")
@@ -36,6 +46,8 @@ class Message(Base):
     id = Column(Integer, primary_key=True, index=True)
     chat_id = Column(Integer, ForeignKey("chats.id", ondelete="CASCADE"))
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    db_query = Column(Text, nullable=True)
+    cost = Column(Float, nullable=False)
     message = Column(Text, nullable=False)
 
     # A message belongs to one chat and one user
