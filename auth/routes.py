@@ -1,16 +1,21 @@
+from cryptography.fernet import Fernet
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from auth.dependencies import (
-    get_db,
+    get_current_user, get_db,
     authenticate_user,
     create_access_token,
     get_user,
 )
 from auth.models import Token
-from auth.schemas import UserCreate, UserResponse
+from auth.schemas import UpdateAPIToken, UserBase, UserCreate, UserResponse
 from chatbot.models import User
-from auth.utils import get_password_hash
+from auth.utils import (
+    encrypt_api_key,
+    get_password_hash,
+    get_secret_key_from_env,
+)
 
 router = APIRouter()
 
@@ -40,3 +45,21 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
     db.refresh(db_user)
     access_token = create_access_token(data={"sub": db_user.username})
     return {"access_token": access_token, "id": db_user.id, "username": db_user.username}
+
+
+@router.post("/update_api_token")
+def update_api_token(received_user: UpdateAPIToken,
+                     current_user: User = Depends(get_current_user),
+                     db: Session = Depends(get_db)):
+
+    secret_key = get_secret_key_from_env()
+    fernet = Fernet(secret_key)
+    encrypted_token = encrypt_api_key(received_user.api_token, fernet)
+
+    current_user.hashed_api_key = encrypted_token
+
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+
+    return {"status": "API Token updated."}
